@@ -45,20 +45,19 @@ def collect_logs(logs_directory):
     logs_data = []
     
     for log_file in os.listdir(logs_directory):
-        if log_file.endswith(".log"):
+        if log_file.endswith("formula_1.log"):
             log_file_path = os.path.join(logs_directory, log_file)
             steps = parse_log_file(log_file_path)
-            # log_name = os.path.splitext(log_file)[0]
             log_name = 'Text2SQLRequest'
             logs_data.append({log_name: steps})
     
     return logs_data
 
 def main():
-    logs_directory = './results/dev/CHESS_IR_CG_UT/mini_dev/2025-03-09T12:50:35.257552/logs'
+    logs_directory = './results/dev/CHESS_IR_CG_UT/mixed_dev_1/2025-04-08T12:58:08.154132/logs'
     logs_data = collect_logs(logs_directory)
     
-    output_file_path = './input_file.json'
+    output_file_path = './input_file_formula1.json'
     with open(output_file_path, 'w') as output_file:
         json.dump(logs_data, output_file, indent=4)
 

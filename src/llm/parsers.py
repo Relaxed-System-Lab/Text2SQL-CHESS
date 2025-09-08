@@ -34,6 +34,7 @@ class PythonListOutputParser(BaseOutputParser):
         text = re.sub(r",\s*]", "]", text)  # Fix trailing commas
         text = re.sub(r"[\u201c\u201d]", '"', text)  # Replace smart quotes
         text = re.sub(r"\s+", " ", text.strip())  # Normalize whitespace
+        text = re.sub(r"\n", "", text)  # Remove newlines
         return text
 
 class FilterColumnOutput(BaseModel):
