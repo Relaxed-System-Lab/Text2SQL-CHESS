@@ -1,6 +1,7 @@
 source .env
 data_mode='dev' # Options: 'dev', 'train' 
 data_path="./data/dev/mini_dev.json" # UPDATE THIS WITH THE PATH TO THE TARGET DATASET
+# data_path="./data/dev/mixed_dev_1.json" # UPDATE THIS WITH THE PATH TO THE TARGET DATASET
 
 config="./run/configs/CHESS_IR_CG_UT.yaml"
 

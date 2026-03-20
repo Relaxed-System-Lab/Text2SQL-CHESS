@@ -1,12 +1,13 @@
 import sqlite3
 import random
 import logging
-from typing import Any, Union, List, Dict
+from typing import Any, Union, List, Dict, Optional
 from func_timeout import func_timeout, FunctionTimedOut
 from multiprocessing import Process, Queue
 import threading
 from queue import Empty
 from enum import Enum
+import time
 
 import os
 
@@ -15,42 +16,92 @@ from sqlglot import parse_one, exp
 class TimeoutException(Exception):
     pass
 
+# Global timer instance for SQL execution
+_sql_timer: Optional[Any] = None
+
+def set_sql_timer(timer: Any) -> None:
+    """Set the global SQL execution timer instance."""
+    global _sql_timer
+    _sql_timer = timer
+
+def get_sql_timer() -> Optional[Any]:
+    """Get the global SQL execution timer instance."""
+    return _sql_timer
 
 
-def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all", timeout: int = 60) -> Any:
-    class QueryThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self)
-            self.result = None
-            self.exception = None
 
-        def run(self):
-            try:
-                with sqlite3.connect(db_path, timeout=60) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(sql)
-                    if fetch == "all":
-                        self.result = cursor.fetchall()
-                    elif fetch == "one":
-                        self.result = cursor.fetchone()
-                    elif fetch == "random":
-                        samples = cursor.fetchmany(10)
-                        self.result = random.choice(samples) if samples else []
-                    elif isinstance(fetch, int):
-                        self.result = cursor.fetchmany(fetch)
-                    else:
-                        raise ValueError("Invalid fetch argument. Must be 'all', 'one', 'random', or an integer.")
-            except Exception as e:
-                self.exception = e
-    query_thread = QueryThread()
-    query_thread.start()
-    query_thread.join(timeout)
-    if query_thread.is_alive():
-        raise TimeoutError(f"SQL query execution exceeded the timeout of {timeout} seconds.")
-    if query_thread.exception:
-        # logging.error(f"Error in execute_sql: {query_thread.exception}\nSQL: {sql}")
-        raise query_thread.exception
-    return query_thread.result
+def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all", timeout: int = 60, 
+                query_id: Optional[str] = None) -> Any:
+    """
+    Execute SQL query with optional timing.
+    
+    Args:
+        db_path (str): Path to the database file.
+        sql (str): SQL query to execute.
+        fetch (Union[str, int]): How to fetch results ('all', 'one', 'random', or int).
+        timeout (int): Query timeout in seconds.
+        query_id (Optional[str]): Query ID for timing tracking. If provided with a timer set,
+                                  execution time will be logged.
+    
+    Returns:
+        Any: Query results.
+    """
+    timer = get_sql_timer()
+    
+    # Start timing if timer is available
+    if timer and query_id:
+        timer.start(query_id)
+    
+    try:
+        class QueryThread(threading.Thread):
+            def __init__(self):
+                threading.Thread.__init__(self)
+                self.result = None
+                self.exception = None
+
+            def run(self):
+                try:
+                    with sqlite3.connect(db_path, timeout=60) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(sql)
+                        if fetch == "all":
+                            self.result = cursor.fetchall()
+                        elif fetch == "one":
+                            self.result = cursor.fetchone()
+                        elif fetch == "random":
+                            samples = cursor.fetchmany(10)
+                            self.result = random.choice(samples) if samples else []
+                        elif isinstance(fetch, int):
+                            self.result = cursor.fetchmany(fetch)
+                        else:
+                            raise ValueError("Invalid fetch argument. Must be 'all', 'one', 'random', or an integer.")
+                except Exception as e:
+                    self.exception = e
+        
+        query_thread = QueryThread()
+        query_thread.start()
+        query_thread.join(timeout)
+        
+        if query_thread.is_alive():
+            raise TimeoutError(f"SQL query execution exceeded the timeout of {timeout} seconds.")
+        
+        if query_thread.exception:
+            # End timing with error if timer is available
+            if timer and query_id:
+                timer.end(query_id, query=sql, success=False, error_msg=str(query_thread.exception))
+            raise query_thread.exception
+        
+        # End timing successfully if timer is available
+        if timer and query_id:
+            timer.end(query_id, query=sql, success=True)
+        
+        return query_thread.result
+    
+    except Exception as e:
+        # Make sure timing is recorded for exceptions
+        if timer and query_id:
+            timer.end(query_id, query=sql, success=False, error_msg=str(e))
+        raise
 
 
 def _clean_sql(sql: str) -> str:
